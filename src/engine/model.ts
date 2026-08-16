@@ -565,12 +565,14 @@ export class GPT {
     const body = 8 + hlen;
     for (const r of this.paramRecords) {
       const t = header[r.name];
-      if (!t || t.dtype !== 'F32' || String(t.shape) !== String(r.shape)) {
-        throw new Error(`checkpoint does not match this model (${r.name})`);
+      if (!t) throw new Error(`checkpoint has no tensor ${r.name}`);
+      if (t.dtype !== 'F32') throw new Error(`${r.name} is ${t.dtype}, expected F32`);
+      if (String(t.shape) !== String(r.shape)) {
+        throw new Error(`${r.name} is ${t.shape.join('×')}, this model wants ${r.shape.join('×')}. The checkpoint is from a different model config`);
       }
       const [a, b] = t.data_offsets as [number, number];
       if (b - a !== r.numel * 4 || body + b > buf.byteLength) {
-        throw new Error(`checkpoint does not match this model (${r.name})`);
+        throw new Error(`checkpoint is truncated at ${r.name}`);
       }
       const data = new Float32Array(buf.slice(body + a, body + b));
       for (let i = 0; i < data.length; i++) {
