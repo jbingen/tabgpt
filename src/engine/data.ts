@@ -10,7 +10,27 @@ export interface TokenData {
   gen: number;                  // corpus generation; bumping it retires models
 }
 
-export async function loadTokenData(base = ''): Promise<TokenData> {
+async function fetchWithProgress(url: string, onBytes?: (got: number, total: number) => void): Promise<ArrayBuffer> {
+  const r = await fetch(url);
+  if (!r.ok || !r.body || !onBytes) return r.arrayBuffer();
+  const total = Number(r.headers.get('content-length') ?? 0);
+  const reader = r.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let got = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(value);
+    got += value.byteLength;
+    onBytes(got, total);
+  }
+  const out = new Uint8Array(got);
+  let off = 0;
+  for (const c of chunks) { out.set(c, off); off += c.byteLength; }
+  return out.buffer;
+}
+
+export async function loadTokenData(base = '', onBytes?: (got: number, total: number) => void): Promise<TokenData> {
   const [tok, words] = await Promise.all([
     fetch(`${base}/tok16k.json`).then((r) => r.json()),
     fetch(`${base}/words-nob.json`).then((r) => r.json()),
@@ -55,7 +75,7 @@ export async function loadTokenData(base = ''): Promise<TokenData> {
   const total = meta.counts.slice(0, nShards).reduce((a, b) => a + b, 0);
   td.tokens = new Uint16Array(total);
   const [first, valBin] = await Promise.all([
-    fetch(`${base}/${meta.shards[0]}`).then((r) => r.arrayBuffer()),
+    fetchWithProgress(`${base}/${meta.shards[0]}`, onBytes),
     fetch(`${base}/${meta.val}`).then((r) => r.arrayBuffer()),
   ]);
   td.tokens.set(new Uint16Array(first), 0);

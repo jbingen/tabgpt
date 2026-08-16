@@ -552,6 +552,42 @@ export class GPT {
     return out;
   }
 
+  /** Load weights from a .safetensors export made by exportWeights. The file
+      carries no optimizer state, so the Adam moments restart from zero; the
+      step comes from the file's metadata so the LR schedule picks up where the
+      exported run left off. */
+  importWeights(buf: ArrayBuffer): number {
+    const dv = new DataView(buf);
+    if (buf.byteLength < 16) throw new Error('not a safetensors file');
+    const hlen = Number(dv.getBigUint64(0, true));
+    if (hlen <= 0 || 8 + hlen > buf.byteLength) throw new Error('not a safetensors file');
+    const header = JSON.parse(new TextDecoder().decode(new Uint8Array(buf, 8, hlen)));
+    const body = 8 + hlen;
+    for (const r of this.paramRecords) {
+      const t = header[r.name];
+      if (!t || t.dtype !== 'F32' || String(t.shape) !== String(r.shape)) {
+        throw new Error(`checkpoint does not match this model (${r.name})`);
+      }
+      const [a, b] = t.data_offsets as [number, number];
+      if (b - a !== r.numel * 4 || body + b > buf.byteLength) {
+        throw new Error(`checkpoint does not match this model (${r.name})`);
+      }
+      const data = new Float32Array(buf.slice(body + a, body + b));
+      for (let i = 0; i < data.length; i++) {
+        if (!isFinite(data[i])) throw new Error('checkpoint contains non-finite values');
+      }
+      this.device.queue.writeBuffer(this.paramPool, r.off * 4, data);
+    }
+    const enc = this.device.createCommandEncoder();
+    enc.clearBuffer(this.mPool);
+    enc.clearBuffer(this.vPool);
+    this.runOps(enc, [this.castOp]);
+    this.device.queue.submit([enc.finish()]);
+    const step = Number(header.__metadata__?.step ?? 0);
+    this.step = Number.isFinite(step) && step > 0 ? Math.floor(step) : 0;
+    return this.step;
+  }
+
   /** Snapshot the live weights out of GPU memory as a .safetensors blob. */
   async exportWeights(meta: Record<string, string>): Promise<Blob> {
     const total = this.paramRecords.reduce((s, r) => s + r.numel, 0);

@@ -165,6 +165,7 @@
     .promptrow input::placeholder { color: color-mix(in srgb, var(--mute) 60%, transparent); }
 
     #status { min-height: 1.4em; font-size: 14px; color: var(--warn); padding-top: 14px; }
+    #status[data-kind="wait"] { color: var(--mute); }
 
     #ckptinfo { font-weight: 400; opacity: 0.75; font-variant-numeric: tabular-nums; }
 
@@ -286,7 +287,9 @@
     <h2>Train loss</h2>
     <div class="legend"><span class="dot"></span><b id="lossema">—</b> train
       <span class="dot" style="background: color-mix(in srgb, var(--ink) 45%, transparent)"></span><b id="valloss">—</b> val
-      <button class="pill" id="toggle" style="margin-left:auto">pause</button>
+      <button class="pill" id="upload" style="margin-left:auto">load checkpoint</button>
+      <button class="pill" id="toggle">pause</button>
+      <input id="ckptfile" type="file" accept=".safetensors" hidden />
     </div>
     <canvas id="chart"></canvas>
 

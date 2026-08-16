@@ -133,6 +133,11 @@ async function idbGet(): Promise<any> {
 function setStatus(kind: 'ok' | 'paused' | 'error' | 'wait', text: string) {
   $('statusdot').dataset.kind = kind;
   $('statustext').textContent = text;
+  // while starting up (or broken) the stats and chart are all placeholders,
+  // so the footer status alone reads as a dead page. Mirror it up top.
+  const top = $('status');
+  top.dataset.kind = kind;
+  top.textContent = kind === 'wait' || kind === 'error' ? text : '';
 }
 
 function drawChart() {
@@ -248,7 +253,12 @@ async function startTraining() {
       if (my === runToken) { setStatus('error', 'GPU device lost'); console.error('device lost:', info.message); }
     });
     device.onuncapturederror = (e) => console.error('webgpu error:', (e as GPUUncapturedErrorEvent).error.message);
-    const ds = await loadTokenData();
+    const ds = await loadTokenData('', (got, total) => {
+      const mb = (n: number) => (n / 1e6).toFixed(0);
+      setStatus('wait', total > 0
+        ? `downloading the text, ${mb(got)} of ${mb(total)} MB`
+        : `downloading the text, ${mb(got)} MB`);
+    });
     if (my !== runToken) return;
 
     setStatus('wait', 'compiling shaders');
@@ -330,6 +340,38 @@ async function startTraining() {
       }
     };
     $('download').onclick = download;
+
+    // continue from a previously downloaded .safetensors. Weights only: the
+    // Adam moments restart, so expect a small loss bump for the first steps
+    const ckptfile = $('ckptfile') as HTMLInputElement;
+    $('upload').onclick = () => { if (my === runToken) ckptfile.click(); };
+    ckptfile.onchange = async () => {
+      const f = ckptfile.files?.[0];
+      ckptfile.value = '';
+      if (!f || my !== runToken) return;
+      try {
+        const step = model.importWeights(await f.arrayBuffer());
+        ema = 0;
+        losses.length = 0;
+        chartReset();
+        valPts.length = 0;
+        $('valloss').textContent = '—';
+        $('lossema').textContent = '—';
+        $('step').textContent = String(step);
+        nextSampleStep = 20;
+        while (nextSampleStep <= step) {
+          nextSampleStep = Math.min(Math.round(nextSampleStep * 1.7), nextSampleStep + 500);
+        }
+        saveNow?.();
+        console.log(`tabgpt: loaded checkpoint ${f.name} at step ${step}`);
+      } catch (e) {
+        console.warn('tabgpt: checkpoint load failed', e);
+        setStatus('error', e instanceof Error ? e.message : 'could not read that file');
+        setTimeout(() => {
+          if (my === runToken) setStatus(running ? 'ok' : 'paused', running ? 'training' : 'paused');
+        }, 5000);
+      }
+    };
 
     let tokPerSec = 0;
     let accMs = 0;
