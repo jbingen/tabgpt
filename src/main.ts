@@ -178,7 +178,9 @@ function drawChart() {
     ctx.fillText(String(g), 4, y - 4);
   }
 
-  // stable envelope over the permanent buckets
+  // stable envelope over the permanent buckets. Early in a run each bucket
+  // holds a single reading and the band collapses to nothing, so the edges
+  // are also stroked: a young run reads as a line, a long one as a band
   const bx = (i: number) => (i / (m - 1)) * w;
   ctx.fillStyle = 'oklch(0.6 0.2 255 / 0.85)';
   ctx.beginPath();
@@ -187,6 +189,15 @@ function drawChart() {
   for (let i = m - 1; i >= 0; i--) ctx.lineTo(bx(i), Math.max(py(chMin[i]), py(chMax[i]) + 1));
   ctx.closePath();
   ctx.fill();
+  ctx.strokeStyle = 'oklch(0.6 0.2 255 / 0.9)';
+  ctx.lineWidth = 1.25;
+  ctx.lineJoin = 'round';
+  for (const edge of [chMax, chMin]) {
+    ctx.beginPath();
+    ctx.moveTo(bx(0), py(edge[0]));
+    for (let i = 1; i < m; i++) ctx.lineTo(bx(i), py(edge[i]));
+    ctx.stroke();
+  }
 
   if (valPts.length > 1) {
     ctx.strokeStyle = 'oklch(0.28 0.02 260 / 0.45)';
