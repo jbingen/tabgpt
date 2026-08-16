@@ -1,0 +1,369 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>TabGPT</title>
+  <style>
+    :root {
+      --canvas: oklch(0.985 0.004 250);
+      --ink: oklch(0.28 0.02 260);
+      --mute: oklch(0.52 0.02 255);
+      --accent: oklch(0.6 0.2 255);
+      --warn: oklch(0.55 0.16 45);
+      --hairline: color-mix(in srgb, var(--ink) 10%, transparent);
+      --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+      --serif: ui-serif, 'New York', Georgia, 'Times New Roman', serif;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      background: var(--canvas);
+      color: var(--ink);
+      font: 16px/1.6 -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    main {
+      max-width: 680px;
+      margin: 0 auto;
+      padding: 28px 24px 0;
+      animation: page-in 0.3s var(--ease-out);
+    }
+
+    @keyframes page-in {
+      from { opacity: 0; transform: translateY(6px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    h1, h2, .wordmark { font-family: var(--serif); font-weight: 400; letter-spacing: 0.002em; }
+    h1 { font-size: 34px; line-height: 1.2; padding: 48px 0 20px; }
+    h2 { font-size: 23px; padding: 44px 0 14px; }
+
+    p { color: color-mix(in srgb, var(--ink) 88%, transparent); padding-bottom: 14px; }
+    a { color: inherit; text-underline-offset: 3px; text-decoration-color: color-mix(in srgb, var(--ink) 30%, transparent); }
+    a:hover { text-decoration-color: var(--accent); }
+
+    nav { display: flex; align-items: center; gap: 18px; }
+    .wordmark { font-size: 19px; margin-right: auto; }
+    nav a:not(.gel) { font-size: 15px; text-decoration: none; color: color-mix(in srgb, var(--ink) 75%, transparent); }
+    nav a:not(.gel):hover { color: var(--ink); }
+
+    /* primary action: gradient pill with rim light and press physics */
+    .gel {
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      border: none;
+      border-radius: 999px;
+      background: linear-gradient(to bottom, oklch(0.72 0.17 252), oklch(0.58 0.21 258));
+      box-shadow:
+        inset 0 1px 1px rgba(255, 255, 255, 0.55),
+        inset 0 -5px 10px rgba(255, 255, 255, 0.28),
+        0 1px 3px rgba(0, 0, 0, 0.12);
+      color: white;
+      font: inherit;
+      font-size: 13.5px;
+      font-weight: 500;
+      padding: 5px 15px;
+      text-decoration: none;
+      transition: transform 0.16s var(--ease-out);
+      will-change: transform;
+      cursor: default;
+    }
+
+    .gel::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      border-radius: inherit;
+      background: rgba(255, 255, 255, 0.14);
+      opacity: 0;
+      transition: opacity 0.15s;
+      pointer-events: none;
+    }
+
+    @media (hover: hover) and (pointer: fine) {
+      .gel:hover::after { opacity: 1; }
+    }
+
+    .gel:active { transform: scale(0.97); }
+
+    .gel.cta {
+      width: 100%;
+      justify-content: space-between;
+      padding: 15px 20px;
+      border-radius: 14px;
+      font-size: 15.5px;
+      margin-top: 6px;
+    }
+
+    .cta-note { font-size: 13px; color: color-mix(in srgb, var(--mute) 85%, transparent); padding-top: 10px; }
+
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 20px 24px;
+      padding: 6px 0 8px;
+    }
+
+    .stat .k { font-size: 13px; color: color-mix(in srgb, var(--mute) 85%, transparent); }
+    .stat .v { font-size: 17px; font-weight: 590; font-variant-numeric: tabular-nums; }
+    .stat .v small { font-size: 13px; font-weight: 400; color: var(--mute); }
+
+    .legend {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 14px;
+      color: var(--mute);
+      padding-bottom: 10px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .legend b { color: var(--ink); font-weight: 590; }
+    .dot { width: 10px; height: 10px; border-radius: 999px; background: var(--accent); }
+
+    #chart { width: 100%; height: 230px; display: block; }
+
+    #livesample, #promptout {
+      white-space: pre-wrap;
+      font-size: 17px;
+      line-height: 1.7;
+      color: color-mix(in srgb, var(--ink) 88%, transparent);
+    }
+
+    #livesample { min-height: 6em; }
+
+    #promptout { padding-top: 12px; }
+    .prompt-prefix { font-weight: 590; }
+
+    .promptrow {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      padding: 6px 6px 6px 16px;
+      border: 1px solid var(--hairline);
+      border-radius: 999px;
+      margin-top: 22px;
+    }
+
+    .promptrow input {
+      flex: 1;
+      min-width: 0;
+      border: none;
+      outline: none;
+      background: none;
+      font: inherit;
+      font-size: 15px;
+      color: var(--ink);
+    }
+
+    .promptrow input::placeholder { color: color-mix(in srgb, var(--mute) 60%, transparent); }
+
+    #status { min-height: 1.4em; font-size: 14px; color: var(--warn); padding-top: 14px; }
+
+    #ckptinfo { font-weight: 400; opacity: 0.75; font-variant-numeric: tabular-nums; }
+
+    .pill {
+      border: none;
+      border-radius: 999px;
+      padding: 4px 14px;
+      background: color-mix(in srgb, var(--ink) 6%, transparent);
+      color: color-mix(in srgb, var(--ink) 75%, transparent);
+      font: inherit;
+      font-size: 12.5px;
+      font-weight: 500;
+      cursor: default;
+      transition: background 0.15s ease, color 0.15s ease, transform 0.16s var(--ease-out);
+      will-change: transform;
+    }
+
+    @media (hover: hover) and (pointer: fine) {
+      .pill:hover { background: color-mix(in srgb, var(--ink) 10%, transparent); color: var(--ink); }
+    }
+
+    .pill:active { transform: scale(0.97); }
+
+    .qa { padding-bottom: 12px; }
+
+    .qa h3 {
+      display: flex;
+      align-items: baseline;
+      gap: 10px;
+      padding-bottom: 6px;
+      font-size: 15.5px;
+      font-weight: 590;
+    }
+
+    .qa h3::before { content: "›"; color: var(--mute); font-weight: 400; }
+
+    .qa p { padding: 0 0 8px 18px; font-size: 15px; }
+
+    footer {
+      max-width: 680px;
+      margin: 64px auto 0;
+      padding: 20px 24px 36px;
+      border-top: 1px solid var(--hairline);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 13.5px;
+      color: var(--mute);
+    }
+
+    #statusdot { width: 8px; height: 8px; border-radius: 999px; background: var(--accent); flex-shrink: 0; }
+    #statusdot[data-kind="paused"], #statusdot[data-kind="wait"] { background: var(--mute); }
+    #statusdot[data-kind="error"] { background: var(--warn); }
+    #statustext { color: var(--accent); }
+    #statusdot[data-kind="paused"] + #statustext, #statusdot[data-kind="wait"] + #statustext { color: var(--mute); }
+    #statusdot[data-kind="error"] + #statustext { color: var(--warn); }
+
+    footer .right { margin-left: auto; }
+    footer .credit { color: color-mix(in srgb, var(--ink) 80%, transparent); font-weight: 500; text-decoration: none; }
+    footer .credit:hover { color: var(--ink); }
+    @media (max-width: 560px) {
+      footer { flex-wrap: wrap; }
+      footer .right { margin-left: 18px; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      main { animation: none; }
+      .gel:active, .pill:active { transform: none; }
+    }
+
+    @media (max-width: 560px) {
+      .stats { grid-template-columns: repeat(2, 1fr); }
+      h1 { font-size: 28px; }
+    }
+
+  </style>
+</head>
+<body>
+  <main>
+    <nav>
+      <span class="wordmark">TabGPT</span>
+      <a href="#faq">FAQ</a>
+      <a class="gel" href="https://github.com/jbingen/tabgpt" target="_blank" rel="noreferrer">GitHub</a>
+    </nav>
+
+    <h1>A language model is training in this browser tab.</h1>
+
+    <p>Your GPU is training a small GPT in this tab right now. I wrote the
+    training loop as WebGPU shaders, so it runs in a normal browser and there's
+    nothing to install.</p>
+
+    <p>It's learning to write Norwegian from
+    <a href="https://huggingface.co/datasets/HuggingFaceFW/fineweb-2" target="_blank" rel="noreferrer">FineWeb 2</a>'s
+    Bokmål slice. It starts out writing complete garbage, after a few minutes it
+    spells real words, and after a while it produces something that almost looks
+    like language.</p>
+
+    <button class="gel cta" id="download">
+      <span>Download the live checkpoint <span id="ckptinfo"></span></span>
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" width="20" height="20">
+        <path d="M12 7.75V13.5M12 13.5L14.25 11.25M12 13.5L9.75 11.25M8.75 16.25H15.25M21.25 12C21.25 17.1086 17.1086 21.25 12 21.25C6.89137 21.25 2.75 17.1086 2.75 12C2.75 6.89137 6.89137 2.75 12 2.75C17.1086 2.75 21.25 6.89137 21.25 12Z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </button>
+    <div class="cta-note">This downloads the actual weights from your GPU as a
+    .safetensors file. Press it twice and you get two different files, since the
+    model trained a bit in between.</div>
+    <div id="status"></div>
+
+    <h2>This session</h2>
+    <div class="stats">
+      <div class="stat"><div class="k">step</div><div class="v" id="step">0</div></div>
+      <div class="stat"><div class="k">train loss</div><div class="v" id="loss">—</div></div>
+      <div class="stat"><div class="k">throughput</div><div class="v"><span id="tps">—</span> <small>tok/s</small></div></div>
+      <div class="stat"><div class="k">tokens trained</div><div class="v" id="mytok">0</div></div>
+      <div class="stat"><div class="k">parameters</div><div class="v" id="params">—</div></div>
+      <div class="stat"><div class="k">real words</div><div class="v" id="realwords">—</div></div>
+    </div>
+
+    <h2>Train loss</h2>
+    <div class="legend"><span class="dot"></span><b id="lossema">—</b> train
+      <span class="dot" style="background: color-mix(in srgb, var(--ink) 45%, transparent)"></span><b id="valloss">—</b> val
+      <button class="pill" id="toggle" style="margin-left:auto">pause</button>
+    </div>
+    <canvas id="chart"></canvas>
+
+    <h2>The model writes</h2>
+    <div id="livesample">…</div>
+    <div class="promptrow">
+      <input id="prompt" type="text" maxlength="60" placeholder="Det var en mørk og stormfull natt" />
+      <button class="pill" id="continue">continue</button>
+    </div>
+    <div id="promptout"></div>
+
+    <h2 id="faq">FAQ</h2>
+    <div class="qa">
+      <h3>Is it actually training?</h3>
+      <p>Yes. The whole training loop runs on your GPU, and the loss you see
+      is read back from it every step. If you want to check, download the
+      checkpoint twice a minute apart and compare the files. They'll differ
+      because the model trained in between. The checkpoint is a standard
+      <a href="https://huggingface.co/docs/safetensors" target="_blank" rel="noreferrer">safetensors</a>
+      file, so you can also load it in Python and inspect the weights.</p>
+    </div>
+    <div class="qa">
+      <h3>What is training?</h3>
+      <p>The model reads 128 tokens and tries to predict the next one at every
+      position, and the loss measures how wrong those guesses were.
+      Backpropagation works out how each of the 24 million weights should
+      change to do a little better, and the optimizer applies the changes.
+      That's the whole loop, and it runs several times a second while the tab
+      is open.</p>
+    </div>
+    <div class="qa">
+      <h3>Can it answer questions?</h3>
+      <p>No. 24 million parameters is not enough to store facts, so everything
+      it writes about people or places is made up. It only learns what the
+      language looks like. Chatbots like ChatGPT are hundreds of times bigger
+      and get an extra round of training to answer questions.</p>
+    </div>
+    <div class="qa">
+      <h3>What model is it?</h3>
+      <p>A GPT with 24 million parameters: 10 layers, a 16k vocabulary and 128
+      tokens of context. The architecture borrows from the
+      <a href="https://github.com/KellerJordan/modded-nanogpt" target="_blank" rel="noreferrer">nanoGPT speedrun</a>
+      (RMSNorm, rotary embeddings, tied weights), just at a much smaller size,
+      which keeps training fast enough to watch on a normal laptop.</p>
+    </div>
+    <div class="qa">
+      <h3>Why is it faster on some machines?</h3>
+      <p>The page checks your GPU's memory and picks the largest batch size
+      that fits. The model is the same on every machine, but better hardware
+      trains more tokens per second.</p>
+    </div>
+    <div class="qa">
+      <h3>Will it hurt my GPU or battery?</h3>
+      <p>No. Games push a GPU much harder than this does. It will use some
+      battery and the fans may spin up. Mine do. There's a pause button if the
+      noise bothers you.</p>
+    </div>
+    <div class="qa">
+      <h3>Can I contribute?</h3>
+      <p>Yes. The engine is a fixed graph of hand-written WGSL kernels in the
+      spirit of <a href="https://github.com/karpathy/llm.c" target="_blank" rel="noreferrer">llm.c</a>,
+      and there's plenty left to improve: the matmuls run at about a teraflop,
+      attention hasn't been optimized yet, and the training recipe has
+      headroom. The repo is linked at the top.</p>
+    </div>
+    <div class="qa">
+      <h3>Why Norwegian?</h3>
+      <p>The text is openly available, I like the language, and no big lab cares
+      about it.</p>
+    </div>
+  </main>
+
+  <footer>
+    <span id="statusdot" data-kind="wait"></span><span id="statustext">starting</span>
+    <span class="right">© 2026 <a class="credit" href="https://github.com/jbingen" target="_blank" rel="noreferrer">Johannes Bingen</a></span>
+  </footer>
+
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>
