@@ -30,10 +30,23 @@ async function fetchWithProgress(url: string, onBytes?: (got: number, total: num
   return out.buffer;
 }
 
+interface CorpusMeta {
+  shards: string[]; counts: number[]; total: number; val: string;
+  tok?: string; words?: string; gen?: number;
+}
+
 export async function loadTokenData(base = '', onBytes?: (got: number, total: number) => void): Promise<TokenData> {
+  // the meta file is the only fixed URL; every data file it names carries the
+  // corpus generation in its filename, so the CDN can cache them immutably
+  let meta: CorpusMeta | null = null;
+  try {
+    const r = await fetch(`${base}/tokens-nob-meta.json`);
+    if (r.ok) meta = await r.json();
+  } catch { /* fall back to the single-file corpus */ }
+
   const [tok, words] = await Promise.all([
-    fetch(`${base}/tok16k.json`).then((r) => r.json()),
-    fetch(`${base}/words-nob.json`).then((r) => r.json()),
+    fetch(`${base}/${meta?.tok ?? 'tok16k.json'}`).then((r) => r.json()),
+    fetch(`${base}/${meta?.words ?? 'words-nob.json'}`).then((r) => r.json()),
   ]);
   const vocabBytes: Uint8Array[] = (tok.vocab as number[][]).map((a) => Uint8Array.from(a));
   const byteToId = new Int32Array(256).fill(-1);
@@ -51,12 +64,6 @@ export async function loadTokenData(base = '', onBytes?: (got: number, total: nu
     gen: 1,
   };
 
-  let meta: { shards: string[]; counts: number[]; total: number; val: string; gen?: number } | null = null;
-  try {
-    const r = await fetch(`${base}/tokens-nob-meta.json`);
-    if (r.ok) meta = await r.json();
-  } catch { /* fall back to the single-file corpus */ }
-
   if (!meta) {
     const bin = await (await fetch(`${base}/tokens-nob.bin`)).arrayBuffer();
     const u16 = new Uint16Array(bin);
@@ -69,9 +76,15 @@ export async function loadTokenData(base = '', onBytes?: (got: number, total: nu
 
   td.gen = meta.gen ?? 1;
   // sharded corpus: train on shard 0 immediately, stream the rest in the
-  // background. Machines with little memory only take the first two shards.
+  // background. Machines with little memory stop at 64M tokens.
   const mem = (navigator as any).deviceMemory ?? 8;
-  const nShards = mem < 8 ? Math.min(2, meta.shards.length) : meta.shards.length;
+  const capTokens = mem < 8 ? 64e6 : Infinity;
+  let nShards = meta.shards.length;
+  let capped = 0;
+  for (let i = 0; i < meta.shards.length; i++) {
+    capped += meta.counts[i];
+    if (capped >= capTokens) { nShards = i + 1; break; }
+  }
   const total = meta.counts.slice(0, nShards).reduce((a, b) => a + b, 0);
   td.tokens = new Uint16Array(total);
   const [first, valBin] = await Promise.all([

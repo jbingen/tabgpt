@@ -328,7 +328,7 @@ async function startTraining() {
           train_loss_ema: ema.toFixed(4),
           dataset: 'HuggingFaceFW/fineweb-2:nob_Latn',
           config: cfgKey,
-          vocab: 'tok16k.json',
+          vocab: vocabKey,
         });
         const a = document.createElement('a');
         a.href = URL.createObjectURL(blob);

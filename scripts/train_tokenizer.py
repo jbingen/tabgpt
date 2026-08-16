@@ -51,7 +51,9 @@ for m in tj["model"]["merges"]:
     a, b = (m if isinstance(m, list) else m.split(" ", 1))
     merges.append([vocab[a], vocab[b], vocab[a + b]])
 
-json.dump({"vocab": id_to_bytes, "merges": merges}, open(f"{PUB}/tok16k.json", "w"))
+# gen-named so the CDN can cache it immutably; keep in step with build_corpus.py
+GEN = 2
+json.dump({"vocab": id_to_bytes, "merges": merges}, open(f"{PUB}/tok16k-g{GEN}.json", "w"))
 print(f"vocab {len(vocab)}, merges {len(merges)}")
 
 words = collections.Counter(re.findall(r"[^\W\d_]{2,}", text.lower(), re.UNICODE))

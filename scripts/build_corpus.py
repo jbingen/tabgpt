@@ -14,7 +14,10 @@ from tokenizers import Tokenizer, decoders, models, pre_tokenizers
 PUB = os.path.join(os.path.dirname(__file__), "..", "public")
 TARGET_CHARS = 400_000_000
 VAL_CHARS = 6_000_000
-SHARD_TOKENS = 32_000_000
+# small shards so the page starts training after one quick download, and the
+# CDN caches every gen-named file immutably
+SHARD_TOKENS = 4_000_000
+GEN = 2
 
 def bytes_to_unicode():
     bs = list(range(ord("!"), ord("~") + 1)) + list(range(ord("¡"), ord("¬") + 1)) + list(range(ord("®"), ord("ÿ") + 1))
@@ -29,7 +32,7 @@ def bytes_to_unicode():
 
 # rebuild the EXACT tokenizer from the exported vocab/merges so token ids match
 byte_encoder = bytes_to_unicode()
-tk = json.load(open(f"{PUB}/tok16k.json"))
+tk = json.load(open(f"{PUB}/tok16k-g{GEN}.json"))
 id_to_str = ["".join(byte_encoder[b] for b in bts) for bts in tk["vocab"]]
 vocab = {s: i for i, s in enumerate(id_to_str)}
 merges = [(id_to_str[a], id_to_str[b]) for a, b, _ in tk["merges"]]
@@ -93,7 +96,7 @@ wc = collections.Counter()
 for d in docs[:60000]:
     wc.update(re.findall(r"[^\W\d_]{2,}", d.lower(), re.UNICODE))
 words = [w for w, c in wc.most_common(80000) if c >= 5]
-json.dump(words, open(f"{PUB}/words-nob.json", "w"))
+json.dump(words, open(f"{PUB}/words-nob-g{GEN}.json", "w"))
 print(f"words {len(words)}", flush=True)
 
 # split off val docs, then tokenize both streams in batches
@@ -114,7 +117,7 @@ def tokenize_stream(doc_list):
     return np.array(out, dtype=np.uint16)
 
 val = tokenize_stream(val_docs)
-val.tofile(f"{PUB}/tokens-nob-val.bin")
+val.tofile(f"{PUB}/tokens-nob-g{GEN}-val.bin")
 print(f"val {len(val)/1e6:.2f}M tokens", flush=True)
 
 train = tokenize_stream(train_docs)
@@ -123,11 +126,13 @@ print(f"train {len(train)/1e6:.1f}M tokens ({sum(len(d) for d in train_docs)/len
 shards = []
 counts = []
 for i in range(0, len(train), SHARD_TOKENS):
-    name = f"tokens-nob-{len(shards):03d}.bin"
+    name = f"tokens-nob-g{GEN}-{len(shards):03d}.bin"
     chunk = train[i : i + SHARD_TOKENS]
     chunk.tofile(f"{PUB}/{name}")
     shards.append(name)
     counts.append(len(chunk))
-json.dump({"shards": shards, "counts": counts, "total": int(len(train)), "val": "tokens-nob-val.bin", "gen": 2},
+json.dump({"shards": shards, "counts": counts, "total": int(len(train)),
+           "val": f"tokens-nob-g{GEN}-val.bin", "tok": f"tok16k-g{GEN}.json",
+           "words": f"words-nob-g{GEN}.json", "gen": GEN},
           open(f"{PUB}/tokens-nob-meta.json", "w"))
 print(f"DONE: {len(shards)} shards, {len(train)/1e6:.1f}M train tokens", flush=True)

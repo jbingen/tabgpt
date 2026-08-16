@@ -6,8 +6,8 @@
       "headers": [{ "key": "Cache-Control", "value": "public, max-age=0, must-revalidate" }]
     },
     {
-      "source": "/(tokens-nob-.*\\.bin|tok16k\\.json|tokenizer\\.json|words-nob\\.json)",
-      "headers": [{ "key": "Cache-Control", "value": "public, max-age=86400" }]
+      "source": "/(tokens-nob-g.*\\.bin|tok16k-g.*\\.json|words-nob-g.*\\.json)",
+      "headers": [{ "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }]
     }
   ]
 }
